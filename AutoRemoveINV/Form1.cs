@@ -1,18 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using OpenQA.Selenium;
+﻿using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
-using OpenQA.Selenium.Interactions;
 using OpenQA.Selenium.Support.UI;
-using Keys = OpenQA.Selenium.Keys;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Windows.Forms;
 
 namespace AutoRemoveINV
 {
@@ -22,13 +14,14 @@ namespace AutoRemoveINV
         private string URL_EACOUNT_LOGIN = "https://loginbc.ecount.com/";
         private string URL_EACOUNT_MAIN = "/ECERP/ECP";
         private IWebDriver driver;
-        private string[] OLD_INT;
+        private List<string> OLD_INV;
         private string OLD_URL;
         // Tạo mới một instance của ChromeDriver (hoặc trình duyệt bạn muốn sử dụng)
 
         public Form1()
         {
             InitializeComponent();
+            this.OLD_INV = new List<string>();
         }
 
         private string getIDButtonSearch(string type)
@@ -79,31 +72,48 @@ namespace AutoRemoveINV
                     return "//*[@id='mainPage']/div[1]/div[1]/div/div[2]/div[1]/div/input";
                 case "INV":
                     return "//*[@id='mainPage']/div[1]/div[2]/div[1]/div/ul/li[2]/div[2]/div/div/input";
-                    //return ".form .control-set .control input.form-control[data-cid='txtDocNo']";
+                //return ".form .control-set .control input.form-control[data-cid='txtDocNo']";
                 default:
                     break;
             }
             return "";
         }
 
-        private string cssSelectorDateNo(string type)
+
+        private string getSelectorBtnXoaNo(string type)
         {
             switch (type)
             {
                 case "SO":
-                    return "td:nth-child(3) a span";
+                    return "#prodDeleteSelected";
                 case "PI":
-                    return "td:nth-child(3) a span";
+                    return "#prodDeleteSelected";
                 case "WP":
-                    return "td:nth-child(3) a";
+                    return "#prodDeleteSelectedsubmain";
                 case "INV":
-                    return "td:nth-child(3) a";
+                    return "#prodDeleteSelected";
                 default:
                     break;
             }
             return "";
         }
-
+        private string getSelectorDateNo(string type)
+        {
+            switch (type)
+            {
+                case "SO":
+                    return "#grid-main > tbody > tr > td:nth-child(3) > a > span";
+                case "PI":
+                    return "#grid-main > tbody > tr > td:nth-child(3) > a > span";
+                case "WP":
+                    return "#grid-main > tbody > tr > td:nth-child(3) > a";
+                case "INV":
+                    return "#grid-main > tbody > tr > td:nth-child(3) > a";
+                default:
+                    break;
+            }
+            return "";
+        }
         private string getUrlTabs(string type)
         {
             switch (type)
@@ -173,7 +183,7 @@ namespace AutoRemoveINV
             string currentDate = DateTime.Now.ToString("hh:mm:ss dd-MM-yyyy");
             int rowIndex = this.dataGridView1.Rows.Add(newIndex, inv, dateNo, status, currentDate);
             DataGridViewCell cell = this.dataGridView1.Rows[rowIndex].Cells[3]; // Assuming you want to style the first cell in the new row
-            if (status == "DELETED")
+            if (status.Contains("DELETED"))
             {
                 cell.Style.ForeColor = Color.Green; // Change to any color you want
             }
@@ -181,75 +191,180 @@ namespace AutoRemoveINV
             {
                 cell.Style.ForeColor = Color.Red; // Change to any color you want
             }
-            // Set the text color for the cell
+
         }
         private void handleWithWQickSearch(string typeINV, string[] arrInv)
         {
             foreach (var inv in arrInv)
             {
-                this.setStatusProcessing(inv);
+                // Check if "wp" is not present in the string "inv"
+                if (!inv.Contains(typeINV))
+                {
+                    this.addDataGridView(inv, "", "INVALID INV!");
+                    continue; // Skip to the next iteration
+                }
+                string newInv = inv.Trim();
+                var checkRemoveNo = this.checkNoDelete(newInv);
+                if (checkRemoveNo.Length > 0)
+                {
+                    newInv = checkRemoveNo[0];
+                }
+                this.setStatusProcessing(newInv);
                 IWebElement inputFieldSearch = this.driver.FindElement(By.XPath(this.cssSelectorInputSearch(typeINV)));
                 inputFieldSearch.Clear();
-                System.Threading.Thread.Sleep(1500); // 2000 milliseconds = 2 seconds
-                inputFieldSearch.SendKeys(inv);
+                System.Threading.Thread.Sleep(1000); // 2000 milliseconds = 2 seconds
+                inputFieldSearch.SendKeys(newInv);
+                System.Threading.Thread.Sleep(500); // 2000 milliseconds = 2 seconds
                 inputFieldSearch.SendKeys(OpenQA.Selenium.Keys.Enter);
 
-                string userInput = inv.Trim(); // Giá trị cần so sánh trong thẻ <span> của cột thứ 2
+                string userInput = newInv.Trim(); // Giá trị cần so sánh trong thẻ <span> của cột thứ 2
                 System.Threading.Thread.Sleep(2000); // 2000 milliseconds = 2 seconds
-                // Tìm tất cả các hàng trong tbody
-                IList<IWebElement> rows = driver.FindElements(By.CssSelector("tbody tr"));
-                string dateNo = "";
-                // Duyệt qua các hàng để tìm hàng phù hợp với điều kiện
-                foreach (IWebElement row in rows)
+                if (checkRemoveNo.Length > 0)
                 {
-                    try
-                    {
-                        // Lấy giá trị text từ thẻ <span> trong cột thứ 2 của hàng
-                        IWebElement spanEle = row.FindElement(By.CssSelector("td:nth-child(2) > span"));
-                        string spanValue = spanEle.Text;
-                        // So sánh giá trị này với giá trị người dùng nhập
-                        if (spanValue.Trim() == userInput.Trim())
-                        {
-                            // Lấy text từ thẻ <a> trong cột thứ 3
-                            string textInThirdColumn = row.FindElement(By.CssSelector(this.cssSelectorDateNo(typeINV))).Text;
-
-
-                            // Đánh dấu checkbox trong cột đầu tiên
-                            IWebElement checkbox = row.FindElement(By.CssSelector("td:first-child div input[type='checkbox']"));
-                            if (!checkbox.Selected)
-                            {
-                                checkbox.Click(); // Đánh dấu checkbox nếu chưa được chọn
-                            }
-                            dateNo = textInThirdColumn;
-                            // Thoát khỏi vòng lặp sau khi tìm thấy hàng phù hợp
-                            break;
-                        }
-                    }
-                    catch (Exception)
-                    {
-                    }
-                }
-
-                if (dateNo != "")
-                {
-                    var checkDelete = this.handleDelete(typeINV);
-                    if (checkDelete)
-                    {
-
-                        this.addDataGridView(inv, dateNo, "DELETED");
-                    }
-                    else
-                    {
-                        this.addDataGridView(inv, dateNo, "FAIL!");
-                    }
+                    var noDel = int.Parse(checkRemoveNo[1]);
+                    this.deleteNoInINV(userInput, noDel, typeINV);
                 }
                 else
                 {
-                    this.addDataGridView(inv, "", "NOT FOUND");
+                    this.handleClickCheckBox(userInput, typeINV);
                 }
             }
 
 
+        }
+        private string[] checkNoDelete(string inv)
+        {
+
+            if (inv.Contains(";"))
+            {
+                string[] parts = inv.Split(';'); // Split the string at the semicolon
+
+                if (parts.Length > 1) // Check if there are at least two parts
+                {
+                    return parts;
+                }
+            }
+            return new string[0];
+        }
+        private void deleteNoInINV(string inv, int noDel, string type)
+        {
+            try
+            {
+                IWebElement spanINV_NO = this.driver.FindElement(By.CssSelector("#grid-main > tbody > tr > td:nth-child(2) > span"));
+                if (spanINV_NO != null)
+                {
+                    string textINV = spanINV_NO.Text;
+                    if (textINV.Trim().ToLower() == inv.Trim().ToLower())
+                    {
+                        IWebElement spanDate_NO = this.driver.FindElement(By.CssSelector(this.getSelectorDateNo(type)));
+                        if (spanDate_NO != null)
+                        {
+
+                            string dateNo = spanDate_NO.Text;
+                            spanDate_NO.Click();
+                            System.Threading.Thread.Sleep(5000);
+                            string xpathCheckbox = "#grid-main > tbody > tr:nth-child(noDel) > td:nth-child(1) > div > input[type=checkbox]".Replace("noDel", noDel.ToString());
+                            IWebElement checkboxNo = this.driver.FindElement(By.CssSelector(xpathCheckbox));
+                            checkboxNo.Click();
+                            System.Threading.Thread.Sleep(500);
+                            if (this.radio_product.Checked)
+                            {
+                                IWebElement btnXoa = this.driver.FindElement(By.CssSelector(this.getSelectorBtnXoaNo(type)));
+                                btnXoa.Click();
+                                System.Threading.Thread.Sleep(500);
+                                IWebElement btnSaveNo = this.driver.FindElement(By.CssSelector("#group3slipSave"));
+                                btnSaveNo.Click();
+                                System.Threading.Thread.Sleep(1000);
+                            }
+                            this.addDataGridView(inv, dateNo, $"DELETED NO:{noDel}");
+                        }
+                        else
+                        {
+                            this.addDataGridView(inv, "", "NOT FOUND DATE_NO!");
+                        }
+                    }
+                    else
+                    {
+                        this.addDataGridView(inv, "", "NOT FOUND INV!");
+                    }
+                    //f8 -> lưu
+                }
+                else
+                {
+                    this.addDataGridView(inv, "", "NOT FOUND INV!");
+                }
+
+            }
+            catch (Exception)
+            {
+                this.addDataGridView(inv, "", "ERORR WHILE WORKING!");
+            }
+
+        }
+        private void handleClickCheckBox(string inv, string typeINV)
+        {
+            string userInput = inv.Trim(); // Giá trị cần so sánh trong thẻ <span> của cột thứ 2
+
+            //
+            // Lấy giá trị text từ thẻ <span> trong cột thứ 2 của hàng
+            string invNo = "";
+            string dateNo = "";
+            try
+            {
+                IWebElement spanINV_NO = this.driver.FindElement(By.CssSelector("#grid-main > tbody > tr > td:nth-child(2) > span"));
+                if (spanINV_NO != null)
+                {
+                    invNo = spanINV_NO.Text;
+                }
+            }
+            catch (Exception)
+            {
+
+            }
+            if (invNo.Trim() == userInput)
+            {
+                //#grid-main > tbody > tr > td:nth-child(3) > a
+                // lay gia tri cua date no
+                try
+                {
+                    IWebElement spanDateNo = this.driver.FindElement(By.CssSelector(this.getSelectorDateNo(typeINV)));
+                    if (spanDateNo != null)
+                    {
+                        dateNo = spanDateNo.Text;
+                    }
+                }
+                catch (Exception)
+                {
+                }
+                if (dateNo != "")
+                {
+                    IWebElement checkbox = this.driver.FindElement(By.CssSelector("#grid-main > tbody > tr > td:nth-child(1) > div > input[type=checkbox]"));
+                    if (!checkbox.Selected)
+                    {
+                        checkbox.Click(); // Đánh dấu checkbox nếu chưa được chọn
+                    }
+                    var checkDelete = this.handleDelete(typeINV);
+                    if (checkDelete)
+                    {
+                        this.addDataGridView(inv, dateNo, "DELETED");
+                    }
+                    else
+                    {
+                        OLD_INV.Add(inv);
+                        this.addDataGridView(inv, dateNo, "DELETE FAIL!");
+                    }
+                }
+                else
+                {
+                    OLD_INV.Add(inv);
+                    this.addDataGridView(inv, dateNo, "NOT FOUND DATE_NO!");
+                }
+            }
+            else
+            {
+                OLD_INV.Add(inv);
+                this.addDataGridView(inv, "", "NOT FOUND");
+            }
         }
 
         private void handleWithMoreSearch(string typeINV, string[] arrInv)
@@ -258,7 +373,22 @@ namespace AutoRemoveINV
             IWebElement inputFieldSearch = this.driver.FindElement(By.XPath(this.cssSelectorInputSearch(typeINV)));
             foreach (var inv in arrInv)
             {
-                this.setStatusProcessing(inv);
+                // Check if "wp" is not present in the string "inv"
+                if (!inv.Contains(typeINV))
+                {
+                    this.addDataGridView(inv, "", "INVALID INV!");
+                    continue; // Skip to the next iteration
+                }
+
+                string newInv = inv.Trim();
+                var checkRemoveNo = this.checkNoDelete(newInv);
+                if (checkRemoveNo.Length > 0)
+                {
+                    newInv = checkRemoveNo[0];
+                }
+
+                this.setStatusProcessing(newInv);
+                System.Threading.Thread.Sleep(1000);
                 // Click vào button search sau khi nó xuất hiện
                 buttonSearch.Click();
                 // Tìm input field theo ID (hoặc các phương pháp tìm khác như Xpath, CSS Selector)
@@ -269,68 +399,25 @@ namespace AutoRemoveINV
 
                 inputFieldSearch.Click();
                 inputFieldSearch.Clear();
-                inputFieldSearch.SendKeys(inv);
+                inputFieldSearch.SendKeys(newInv);
 
 
                 // Press F8 after sending the keys
+                System.Threading.Thread.Sleep(500);
                 inputFieldSearch.SendKeys(OpenQA.Selenium.Keys.F8);
-                System.Threading.Thread.Sleep(1000); // 2000 milliseconds = 2 seconds
-
-                string userInput = inv.Trim(); // Giá trị cần so sánh trong thẻ <span> của cột thứ 2
-
-                // Tìm tất cả các hàng trong tbody
-                IList<IWebElement> rows = driver.FindElements(By.CssSelector("tbody tr"));
-                string dateNo = "";
-                // Duyệt qua các hàng để tìm hàng phù hợp với điều kiện
-                foreach (IWebElement row in rows)
+                System.Threading.Thread.Sleep(1500);
+                if (checkRemoveNo.Length > 0)
                 {
-                    try
-                    {
-                        // Lấy giá trị text từ thẻ <span> trong cột thứ 2 của hàng
-                        IWebElement spanEle = row.FindElement(By.CssSelector("td:nth-child(2) > span"));
-                        string spanValue = spanEle.Text;
-                        // So sánh giá trị này với giá trị người dùng nhập
-                        if (spanValue.Trim() == userInput.Trim())
-                        {
-                            // Lấy text từ thẻ <a> trong cột thứ 3
-                            string textInThirdColumn = row.FindElement(By.CssSelector(this.cssSelectorDateNo(typeINV))).Text;
 
-
-                            // Đánh dấu checkbox trong cột đầu tiên
-                            IWebElement checkbox = row.FindElement(By.CssSelector("td:first-child div input[type='checkbox']"));
-                            if (!checkbox.Selected)
-                            {
-                                checkbox.Click(); // Đánh dấu checkbox nếu chưa được chọn
-                            }
-                            dateNo = textInThirdColumn;
-                            // Thoát khỏi vòng lặp sau khi tìm thấy hàng phù hợp
-                            break;
-                        }
-                    }
-                    catch (Exception)
-                    {
-                    }
-                }
-
-                if (dateNo != "")
-                {
-                    var checkDelete = this.handleDelete(typeINV);
-                    if (checkDelete)
-                    {
-
-                        this.addDataGridView(inv, dateNo, "DELETED");
-                    }
-                    else
-                    {
-                        this.addDataGridView(inv, dateNo, "FAIL!");
-                    }
+                    var noDel = int.Parse(checkRemoveNo[1]);
+                    Console.WriteLine("noDel" + noDel);
+                    this.deleteNoInINV(newInv, noDel, typeINV);
                 }
                 else
                 {
-                    this.addDataGridView(inv, "", "NOT FOUND");
-
+                    this.handleClickCheckBox(newInv, typeINV);
                 }
-                System.Threading.Thread.Sleep(1000);
+
             }
         }
         private void login(string typeINV)
@@ -346,19 +433,19 @@ namespace AutoRemoveINV
                 IWebElement inputField = this.driver.FindElement(By.Id("com_code"));
 
                 // Điền giá trị vào input field
-                inputField.SendKeys("168426");
+                inputField.SendKeys(this.tb_companyCode.Text.Trim());
 
                 // Tìm input field theo ID (hoặc các phương pháp tìm khác như Xpath, CSS Selector)
                 IWebElement inputFieldID = this.driver.FindElement(By.Id("id"));
 
                 // Điền giá trị vào input field
-                inputFieldID.SendKeys("TUANIT");
+                inputFieldID.SendKeys(this.tb_ID.Text.Trim());
 
                 // Tìm input field theo ID (hoặc các phương pháp tìm khác như Xpath, CSS Selector)
                 IWebElement inputFieldPW = this.driver.FindElement(By.Id("passwd"));
 
                 // Điền giá trị vào input field
-                inputFieldPW.SendKeys("Toilatuan201@");
+                inputFieldPW.SendKeys(this.tb_pw.Text.Trim());
 
                 // Tìm button theo ID (hoặc các phương pháp tìm khác như Xpath, CSS Selector)
                 IWebElement button = this.driver.FindElement(By.Id("save"));
@@ -394,7 +481,20 @@ namespace AutoRemoveINV
         private void buttonOpenWeb_Click(object sender, EventArgs e)
         {
 
-            this.ValidateBeforeWork();
+            DialogResult result = MessageBox.Show(
+                    $"Bắt đầu chạy trong chế độ:{this.checkMode()}?", // The message to display
+                    "Thông báo",                      // The title of the message box
+                    MessageBoxButtons.YesNo,             // Buttons to display (Yes and No)
+                    MessageBoxIcon.Question              // Icon to display (Question mark)
+                );
+
+            // Check the result of the user's choice
+            if (result == DialogResult.Yes)
+            {
+                this.OLD_INV.Clear();
+                this.tb_inv.Text = this.tb_inv.Text.Trim();
+                this.ValidateBeforeWork();
+            }
         }
 
         private void setStatusReady()
@@ -421,26 +521,35 @@ namespace AutoRemoveINV
             this.lb_processing.Show();
         }
 
-
-        private void ValidateBeforeWork()
+        private string checkType()
         {
-            if (String.IsNullOrEmpty(this.tb_inv.Text))
-            {
-                MessageBox.Show("Chưa Nhập Số Invoice!");
-                return;
-            }
-
             string checkFlag = "";
             foreach (Control control in grbox_typeINV.Controls)
             {
-                if (control is RadioButton radioButton && radioButton.Checked)
+                if (control is System.Windows.Forms.RadioButton radioButton && radioButton.Checked)
                 {
                     // Xử lý khi radioButton được chọn
                     checkFlag = radioButton.Text;
                     break; // Thoát khỏi vòng lặp sau khi tìm thấy RadioButton được chọn
                 }
             }
+            return checkFlag;
+        }
 
+        private void ValidateBeforeWork()
+        {
+            if (String.IsNullOrEmpty(this.tb_companyCode.Text.Trim()) || String.IsNullOrEmpty(this.tb_ID.Text.Trim()) || String.IsNullOrEmpty(this.tb_pw.Text.Trim()))
+            {
+                MessageBox.Show("Điền đầy đủ thông tin tài khoản!", "Thông báo");
+                return;
+            }
+            if (String.IsNullOrEmpty(this.tb_inv.Text))
+            {
+                MessageBox.Show("Chưa Nhập Số Invoice!", "Thông báo");
+                return;
+            }
+
+            string checkFlag = this.checkType();
             if (checkFlag != "")
             {
 
@@ -454,13 +563,10 @@ namespace AutoRemoveINV
                     var chromeOptions = new ChromeOptions();
                     chromeOptions.AddArgument("headless");
                     chromeOptions.AddArgument("--disable-gpu"); // Bắt buộc trên Windows
-                    chromeOptions.AddArgument("--window-size=1920,1080"); // Thiết lập kích thước cửa sổ ảo
-
-
-
+                    //chromeOptions.AddArgument("--window-size=1920,1080"); // Thiết lập kích thước cửa sổ ảo
                     this.driver = new ChromeDriver(chromeService, chromeOptions);
                 }
-                login(checkFlag);
+                this.login(checkFlag);
                 this.OLD_URL = this.getOldUrl(this.driver.Url);
                 this.driver.Close();
                 // Chuyển sang một tab khác nếu còn tab khác đang mở
@@ -468,12 +574,14 @@ namespace AutoRemoveINV
                 {
                     this.driver.SwitchTo().Window(driver.WindowHandles[0]);
                 }
+                this.showNotifiIcon();
                 this.setStatusReady();
                 this.tb_inv.Text = "";
+
             }
             else
             {
-                MessageBox.Show("Chưa Chọn Loại Invoice!");
+                MessageBox.Show("Chưa Chọn Loại Invoice!", "Thông báo");
             }
 
         }
@@ -482,9 +590,10 @@ namespace AutoRemoveINV
         {
             try
             {
-                this.driver.Close();
-                this.driver.Quit();
-
+                if (this.driver != null)
+                {
+                    this.driver.Quit();
+                }
             }
             catch (Exception)
             {
@@ -494,14 +603,74 @@ namespace AutoRemoveINV
 
         }
 
+        private string checkMode()
+        {
+            string checkFlag = "";
+            foreach (Control control in grb_mode.Controls)
+            {
+                if (control is System.Windows.Forms.RadioButton radioButton && radioButton.Checked)
+                {
+                    // Xử lý khi radioButton được chọn
+                    checkFlag = radioButton.Text;
+                    break; // Thoát khỏi vòng lặp sau khi tìm thấy RadioButton được chọn
+                }
+            }
+            return checkFlag;
+        }
+
         private void btnStop_Click(object sender, EventArgs e)
         {
 
+            DialogResult result = MessageBox.Show(
+                    "Chạy lại các phiếu bị lỗi?", // The message to display
+                    "Thông báo",                      // The title of the message box
+                    MessageBoxButtons.YesNo,             // Buttons to display (Yes and No)
+                    MessageBoxIcon.Question              // Icon to display (Question mark)
+                );
+
+            // Check the result of the user's choice
+            if (result == DialogResult.Yes)
+            {
+                int countOLD = OLD_INV.Count;
+                if (countOLD > 0)
+                {
+
+                    string text = string.Join(Environment.NewLine, this.OLD_INV);
+                    this.tb_inv.Text = text;
+                    DialogResult resultErr = MessageBox.Show(
+                    $"Chạy lại {countOLD} phiếu bị lỗi?", // The message to display
+                    "Thông báo",                      // The title of the message box
+                    MessageBoxButtons.YesNo,             // Buttons to display (Yes and No)
+                    MessageBoxIcon.Question              // Icon to display (Question mark)
+                );
+                    if (resultErr == DialogResult.Yes)
+                    {
+                        ValidateBeforeWork();
+
+                    }
+                }
+                else
+                {
+                    MessageBox.Show(
+                    "Không tìm thấy phiếu lỗi!", // The message to display
+                    "Thông báo");            // Icon to display (Question mark)
+                }
+            }
         }
 
         private void radioBDHH_CheckedChanged(object sender, EventArgs e)
         {
 
+        }
+
+        private void showNotifiIcon()
+        {
+            this.notifyIcon1.Icon = new System.Drawing.Icon("meme-loopy-14.ico");
+            this.notifyIcon1.Text = "Text";
+            this.notifyIcon1.Visible = true;
+            this.notifyIcon1.BalloonTipTitle = "Thông báo";
+            this.notifyIcon1.BalloonTipText = "Hoàn thành xử lý!";
+            this.notifyIcon1.ShowBalloonTip(50);
         }
 
         private void initDataGridView()
@@ -511,6 +680,7 @@ namespace AutoRemoveINV
             this.dataGridView1.Columns.Add("dateNo", "Date No");
             this.dataGridView1.Columns.Add("status", "Status");
             this.dataGridView1.Columns.Add("time", "Time");
+            this.dataGridView1.Columns[0].Width = 25;
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -521,6 +691,25 @@ namespace AutoRemoveINV
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
             this.closeDriver();
+        }
+
+        private void label5_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void tb_inv_TextChanged(object sender, EventArgs e)
+        {
+            var arrInv = this.tb_inv.Text.Split('\n');
+            int count = 0;
+            foreach (var arrInvItem in arrInv)
+            {
+                if (!String.IsNullOrEmpty(arrInvItem))
+                {
+                    count++;
+                }
+            }
+            this.lb_total_inv.Text = count.ToString();
         }
     }
 }
