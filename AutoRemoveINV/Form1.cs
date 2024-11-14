@@ -180,7 +180,7 @@ namespace AutoRemoveINV
         {
             var oldIndex = this.dataGridView1.Rows.Count - 1;
             var newIndex = oldIndex + 1;
-            string currentDate = DateTime.Now.ToString("hh:mm:ss dd-MM-yyyy");
+            string currentDate = DateTime.Now.ToString("HH:mm:ss dd-MM-yyyy");
             int rowIndex = this.dataGridView1.Rows.Add(newIndex, inv, dateNo, status, currentDate);
             DataGridViewCell cell = this.dataGridView1.Rows[rowIndex].Cells[3]; // Assuming you want to style the first cell in the new row
             if (status.Contains("DELETED"))
